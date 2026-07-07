@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ตู้สติกเกอร์บอกรัก | Digital Love Wall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg-deep:#0A2540;
+    --board:#0F3160;
+    --board-edge:#0B2748;
+    --primary:#2F80C4;
+    --sky:#8ED2F0;
+    --gold:#E8B858;
+    --gold-dim:#B98F45;
+    --paper:#FFFCF5;
+    --ink:#1C2B3A;
+    --ink-soft:#4A5A6B;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-deep);font-family:'Sarabun',sans-serif;color:var(--paper);overflow:hidden;}
+  #app{width:100%;height:100vh;position:relative;}
+
+  /* ---------- shared decorative bits ---------- */
+  .felt-board{
+    background:
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.035) 0, rgba(255,255,255,0.035) 2px, transparent 2px),
+      radial-gradient(circle at 60% 70%, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 2px, transparent 2px),
+      linear-gradient(160deg, var(--board) 0%, var(--board-edge) 100%);
+    background-size: 34px 34px, 46px 46px, 100% 100%;
+  }
+  .drift{position:absolute;opacity:0.16;pointer-events:none;animation:driftMove 14s ease-in-out infinite;}
+  @keyframes driftMove{
+    0%{transform:translateY(0) rotate(0deg);}
+    50%{transform:translateY(-18px) rotate(8deg);}
+    100%{transform:translateY(0) rotate(0deg);}
+  }
+
+  /* ---------- WALL VIEW ---------- */
+  .wall-root{width:100%;height:100%;display:flex;flex-direction:column;}
+  .wall-header{
+    padding:22px 40px 16px;
+    display:flex;align-items:center;justify-content:center;gap:16px;
+    position:relative;
+    border-bottom:1px solid rgba(232,184,88,0.25);
+  }
+  .wall-header h1{
+    font-family:'Mitr',sans-serif;font-weight:700;font-size:clamp(24px,3.2vw,42px);
+    margin:0;color:var(--paper);letter-spacing:0.5px;text-align:center;
+    text-shadow:0 2px 12px rgba(0,0,0,0.25);
+  }
+  .wall-header .sub{
+    font-family:'Sarabun',sans-serif;font-size:clamp(12px,1.1vw,16px);color:var(--sky);
+    display:block;margin-top:2px;font-weight:500;
+  }
+  .wall-body{flex:1;display:flex;gap:0;overflow:hidden;}
+  .board-scroll{flex:1;overflow-y:auto;padding:28px 24px 40px;}
+  .board-scroll::-webkit-scrollbar{width:10px;}
+  .board-scroll::-webkit-scrollbar-thumb{background:rgba(232,184,88,0.35);border-radius:6px;}
+  .board{display:flex;flex-wrap:wrap;gap:22px;align-content:flex-start;justify-content:center;}
+
+  .sticker{
+    background:var(--paper);color:var(--ink);
+    width:210px;border-radius:8px;
+    padding:14px 14px 16px;
+    box-shadow:0 10px 22px rgba(0,0,0,0.32), 0 2px 4px rgba(0,0,0,0.15);
+    position:relative;
+    animation:stickIn 0.6s cubic-bezier(.2,1.4,.4,1) both;
+  }
+  .sticker::before{
+    content:'';position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+    width:16px;height:16px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #FBE3A5, var(--gold-dim));
+    box-shadow:0 3px 5px rgba(0,0,0,0.4);
+  }
+  @keyframes stickIn{
+    0%{transform:scale(0.3) rotate(-40deg);opacity:0;}
+    60%{transform:scale(1.08) rotate(var(--rot));opacity:1;}
+    100%{transform:scale(1) rotate(var(--rot));opacity:1;}
+  }
+  .sticker img{width:100%;height:150px;object-fit:cover;border-radius:5px;margin-bottom:8px;display:block;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.05);}
+  .sticker .msg{font-size:14.5px;line-height:1.45;font-weight:500;word-break:break-word;}
+  .sticker .icon-row{font-size:20px;margin-bottom:6px;}
+  .sticker .from{margin-top:10px;font-family:'Mitr',sans-serif;font-size:12.5px;color:var(--primary);font-weight:600;text-align:right;}
+
+  .empty-note{
+    margin:auto;text-align:center;color:rgba(255,255,255,0.55);font-size:16px;
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+  }
+
+  .qr-panel{
+    width:300px;flex-shrink:0;
+    background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border-left:1px solid rgba(232,184,88,0.25);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:28px 22px;gap:14px;text-align:center;
+  }
+  .qr-panel h2{font-family:'Mitr',sans-serif;font-size:20px;margin:0;font-weight:600;color:var(--gold);}
+  .qr-box{background:var(--paper);padding:14px;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,0.35);}
+  .qr-box img,.qr-box canvas{display:block;border-radius:4px;}
+  .qr-panel p{font-size:13.5px;color:rgba(255,255,255,0.75);margin:0;line-height:1.5;max-width:230px;}
+  .qr-panel .steps{text-align:left;font-size:13px;color:rgba(255,255,255,0.8);line-height:1.9;margin:6px 0 0;}
+  .qr-panel .steps b{color:var(--sky);}
+
+  .admin-gear{
+    position:absolute;top:16px;right:18px;width:30px;height:30px;border-radius:50%;
+    background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+    color:rgba(255,255,255,0.55);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:15px;user-select:none;
+  }
+  .admin-gear:hover{color:var(--gold);border-color:var(--gold);}
+
+  .confirm-overlay{
+    position:fixed;inset:0;background:rgba(5,15,30,0.7);display:flex;align-items:center;justify-content:center;z-index:50;
+  }
+  .confirm-box{background:var(--paper);color:var(--ink);padding:26px 28px;border-radius:14px;max-width:320px;text-align:center;font-family:'Sarabun',sans-serif;}
+  .confirm-box h3{font-family:'Mitr',sans-serif;margin:0 0 10px;color:var(--ink);}
+  .confirm-box .btn-row{display:flex;gap:10px;margin-top:18px;}
+  .confirm-box button{flex:1;padding:10px 0;border-radius:8px;border:none;font-family:'Mitr',sans-serif;font-weight:600;cursor:pointer;font-size:14px;}
+  .btn-danger{background:#D65A5A;color:#fff;}
+  .btn-neutral{background:#EDEDED;color:#333;}
+
+  /* ---------- SUBMIT (MOBILE) VIEW ---------- */
+  .submit-root{
+    width:100%;height:100%;overflow-y:auto;
+    background:radial-gradient(circle at 50% 0%, #164a7a 0%, var(--bg-deep) 60%);
+    display:flex;justify-content:center;padding:32px 18px 50px;
+  }
+  .submit-card{
+    width:100%;max-width:420px;background:var(--paper);color:var(--ink);
+    border-radius:20px;padding:30px 24px 34px;box-shadow:0 20px 50px rgba(0,0,0,0.4);
+    position:relative;
+  }
+  .submit-card::before{
+    content:'';position:absolute;top:-11px;left:50%;transform:translateX(-50%);
+    width:20px;height:20px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #FBE3A5, var(--gold-dim));
+    box-shadow:0 3px 6px rgba(0,0,0,0.4);
+  }
+  .submit-card h1{
+    font-family:'Mitr',sans-serif;font-size:24px;margin:6px 0 2px;text-align:center;color:var(--ink);
+  }
+  .submit-card .lead{text-align:center;color:var(--ink-soft);font-size:14px;margin:0 0 22px;}
+  label{display:block;font-family:'Mitr',sans-serif;font-size:13.5px;font-weight:600;color:var(--primary);margin:16px 0 6px;}
+  input[type="text"], textarea{
+    width:100%;border:1.5px solid #DCE3EA;border-radius:10px;padding:11px 13px;
+    font-family:'Sarabun',sans-serif;font-size:15px;color:var(--ink);background:#FAFBFC;
+    resize:none;
+  }
+  input[type="text"]:focus, textarea:focus{outline:none;border-color:var(--primary);background:#fff;}
+  textarea{min-height:100px;line-height:1.5;}
+  .file-btn{
+    display:flex;align-items:center;gap:10px;border:1.5px dashed #C9D4DE;border-radius:10px;
+    padding:12px 14px;cursor:pointer;font-size:14px;color:var(--ink-soft);background:#FAFBFC;
+  }
+  .file-btn:hover{border-color:var(--primary);color:var(--primary);}
+  #photoInput{display:none;}
+  .preview-wrap{margin-top:10px;position:relative;display:inline-block;}
+  .preview-wrap img{max-width:100%;max-height:220px;border-radius:10px;display:block;}
+  .preview-wrap .remove-photo{
+    position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:#fff;border:none;
+    width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;
+  }
+  .submit-btn{
+    width:100%;margin-top:24px;padding:14px 0;border:none;border-radius:12px;
+    background:linear-gradient(135deg, var(--primary), #1E5FA0);color:#fff;
+    font-family:'Mitr',sans-serif;font-weight:600;font-size:16px;cursor:pointer;
+    box-shadow:0 8px 18px rgba(47,128,196,0.35);
+  }
+  .submit-btn:disabled{opacity:0.6;cursor:default;}
+  .err-text{color:#C0392B;font-size:13px;margin-top:10px;text-align:center;display:none;}
+  .hint{font-size:12px;color:#8A96A3;margin-top:6px;}
+
+  .thanks-screen{
+    width:100%;max-width:420px;background:var(--paper);color:var(--ink);border-radius:20px;
+    padding:50px 26px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.4);
+  }
+  .thanks-screen .big-icon{font-size:52px;margin-bottom:10px;}
+  .thanks-screen h1{font-family:'Mitr',sans-serif;font-size:22px;margin:0 0 8px;}
+  .thanks-screen p{color:var(--ink-soft);font-size:14.5px;line-height:1.6;margin:0 0 22px;}
+  .again-btn{
+    background:none;border:1.5px solid var(--primary);color:var(--primary);
+    padding:10px 22px;border-radius:10px;font-family:'Mitr',sans-serif;font-weight:600;cursor:pointer;font-size:14px;
+  }
+
+  @media (max-width:900px){
+    .wall-body{flex-direction:column;}
+    .qr-panel{width:100%;border-left:none;border-top:1px solid rgba(232,184,88,0.25);flex-direction:row;flex-wrap:wrap;padding:16px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode');
+  const app = document.getElementById('app');
+  const STORAGE_PREFIX = 'loveentry:';
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+  }
+
+  function hashRotation(key){
+    let h = 0;
+    for(let i=0;i<key.length;i++){ h = (h*31 + key.charCodeAt(i)) % 10000; }
+    return (h % 13) - 6; // -6deg .. +6deg
+  }
+
+  const FLOWER = '🌼', HEART = '💙';
+
+  /* ===================== WALL VIEW ===================== */
+  function renderWallShell(){
+    app.innerHTML = `
+      <div class="wall-root felt-board">
+        <div class="drift" style="top:8%;left:4%;font-size:46px;">${FLOWER}</div>
+        <div class="drift" style="top:70%;left:8%;font-size:34px;animation-delay:2s;">${HEART}</div>
+        <div class="drift" style="top:14%;right:26%;font-size:30px;animation-delay:4s;">${HEART}</div>
+        <div class="drift" style="top:78%;right:30%;font-size:40px;animation-delay:6s;">${FLOWER}</div>
+
+        <div class="admin-gear" id="adminGear" title="ตั้งค่า">⚙</div>
+
+        <div class="wall-header">
+          <h1>${FLOWER} ตู้สติกเกอร์บอกรัก ${FLOWER}
+            <span class="sub">สแกน QR โค้ด แล้วส่งคำอวยพรหรือรูปคู่กับคุณแม่ ให้ขึ้นจอทันที</span>
+          </h1>
+        </div>
+
+        <div class="wall-body">
+          <div class="board-scroll"><div class="board" id="board"></div></div>
+          <div class="qr-panel">
+            <h2>สแกนเพื่อบอกรักแม่</h2>
+            <div class="qr-box" id="qrBox"></div>
+            <div class="steps">
+              <div>1. เปิดกล้องมือถือสแกน QR</div>
+              <div>2. พิมพ์คำอวยพร หรือแนบรูปคู่กับคุณแม่</div>
+              <div>3. กด <b>ติดสติกเกอร์</b> แล้วรอดูบนจอ ${HEART}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const qrUrl = location.origin + location.pathname + '?mode=submit';
+    if(window.QRCode){
+      new QRCode(document.getElementById('qrBox'), {
+        text: qrUrl, width: 168, height: 168,
+        colorDark: '#0F3160', colorLight: '#FFFCF5',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    document.getElementById('adminGear').addEventListener('click', showClearConfirm);
+  }
+
+  function showClearConfirm(){
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <h3>ล้างข้อความทั้งหมด?</h3>
+        <p style="font-size:13.5px;color:#555;">สติกเกอร์ทั้งหมดบนจอจะถูกลบ ใช้เมื่อเริ่มงานใหม่เท่านั้น</p>
+        <div class="btn-row">
+          <button class="btn-neutral" id="cancelClear">ยกเลิก</button>
+          <button class="btn-danger" id="confirmClear">ล้างทั้งหมด</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('cancelClear').onclick = () => overlay.remove();
+    document.getElementById('confirmClear').onclick = async () => {
+      try{
+        const list = await window.storage.list(STORAGE_PREFIX, true);
+        const keys = (list && list.keys) || [];
+        for(const k of keys){
+          try{ await window.storage.delete(k, true); }catch(e){}
+        }
+        seenIds = new Set();
+        await refreshWall();
+      }catch(e){ console.error(e); }
+      overlay.remove();
+    };
+  }
+
+  let seenIds = new Set();
+  let firstLoad = true;
+
+  async function refreshWall(){
+    const board = document.getElementById('board');
+    if(!board) return;
+    try{
+      const list = await window.storage.list(STORAGE_PREFIX, true);
+      let keys = (list && list.keys) || [];
+      keys = keys.slice().sort().reverse(); // keys embed timestamp -> lexical sort works
+      const topKeys = keys.slice(0, 60);
+
+      if(topKeys.length === 0){
+        board.innerHTML = `<div class="empty-note"><div style="font-size:40px;">${FLOWER}</div>ยังไม่มีสติกเกอร์<br>สแกน QR ด้านขวาเพื่อเป็นคนแรก!</div>`;
+        firstLoad = false;
+        return;
+      }
+
+      const entries = await Promise.all(topKeys.map(async k => {
+        try{
+          const r = await window.storage.get(k, true);
+          if(!r) return null;
+          const data = JSON.parse(r.value);
+          return {key:k, data};
+        }catch(e){ return null; }
+      }));
+
+      board.innerHTML = '';
+      entries.filter(Boolean).forEach(({key, data}) => {
+        const rot = hashRotation(key);
+        const isNew = !seenIds.has(key);
+        seenIds.add(key);
+        const el = document.createElement('div');
+        el.className = 'sticker';
+        el.style.setProperty('--rot', rot + 'deg');
+        el.style.transform = `rotate(${rot}deg)`;
+        if(!isNew || firstLoad){ el.style.animation = 'none'; }
+        el.innerHTML = `
+          ${data.image ? `<img src="${data.image}" alt="รูปคู่กับคุณแม่">` : `<div class="icon-row">${HEART}</div>`}
+          ${data.message ? `<div class="msg">${escapeHtml(data.message)}</div>` : ''}
+          ${data.name ? `<div class="from">— ${escapeHtml(data.name)}</div>` : ''}
+        `;
+        board.appendChild(el);
+      });
+      firstLoad = false;
+    }catch(e){
+      console.error('refreshWall error', e);
+    }
+  }
+
+  function startWall(){
+    renderWallShell();
+    refreshWall();
+    setInterval(refreshWall, 4000);
+  }
+
+  /* ===================== SUBMIT VIEW ===================== */
+  let selectedImageDataUrl = null;
+
+  function renderSubmitForm(){
+    app.innerHTML = `
+      <div class="submit-root">
+        <div class="submit-card">
+          <h1 style="text-align:center;">${HEART} บอกรักแม่ผ่านมือถือ</h1>
+          <p class="lead">ข้อความและรูปของคุณจะขึ้นจอทันที</p>
+
+          <label for="nameInput">ชื่อผู้ส่ง (ไม่บังคับ)</label>
+          <input type="text" id="nameInput" placeholder="เช่น ทีมบัญชี" maxlength="40">
+
+          <label for="msgInput">ข้อความบอกรัก</label>
+          <textarea id="msgInput" placeholder="เขียนคำอวยพรถึงคุณแม่..." maxlength="220"></textarea>
+
+          <label>แนบรูปคู่กับคุณแม่ (ไม่บังคับ)</label>
+          <label class="file-btn" for="photoInput">📷 เลือกรูปภาพ</label>
+          <input type="file" id="photoInput" accept="image/*">
+          <div id="previewArea"></div>
+          <div class="hint">รองรับ .jpg .png ระบบจะย่อขนาดรูปให้อัตโนมัติ</div>
+
+          <button class="submit-btn" id="sendBtn">ติดสติกเกอร์ให้แม่ ${HEART}</button>
+          <div class="err-text" id="errText"></div>
+        </div>
+      </div>
+    `;
+
+    const photoInput = document.getElementById('photoInput');
+    const previewArea = document.getElementById('previewArea');
+    const errText = document.getElementById('errText');
+
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = 900;
+          const scale = Math.min(1, maxW / img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          selectedImageDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+          previewArea.innerHTML = `
+            <div class="preview-wrap">
+              <img src="${selectedImageDataUrl}">
+              <button class="remove-photo" id="removePhoto">✕</button>
+            </div>`;
+          document.getElementById('removePhoto').onclick = () => {
+            selectedImageDataUrl = null;
+            previewArea.innerHTML = '';
+            photoInput.value = '';
+          };
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('sendBtn').addEventListener('click', async () => {
+      const name = document.getElementById('nameInput').value.trim();
+      const message = document.getElementById('msgInput').value.trim();
+      errText.style.display = 'none';
+
+      if(!message && !selectedImageDataUrl){
+        errText.textContent = 'กรุณาพิมพ์ข้อความ หรือแนบรูปภาพอย่างน้อยหนึ่งอย่าง';
+        errText.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('sendBtn');
+      btn.disabled = true;
+      btn.textContent = 'กำลังส่ง...';
+
+      const entry = {
+        name: name || '',
+        message: message || '',
+        image: selectedImageDataUrl || null,
+        ts: Date.now()
+      };
+      const key = STORAGE_PREFIX + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+
+      try{
+        const res = await window.storage.set(key, JSON.stringify(entry), true);
+        if(!res){ throw new Error('save failed'); }
+        renderThanks();
+      }catch(e){
+        console.error(e);
+        errText.textContent = 'ส่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+        errText.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
+      }
+    });
+  }
+
+  function renderThanks(){
+    app.innerHTML = `
+      <div class="submit-root">
+        <div class="thanks-screen">
+          <div class="big-icon">${HEART}</div>
+          <h1>ส่งเรียบร้อยแล้ว!</h1>
+          <p>ขอบคุณที่ร่วมบอกรักแม่ ข้อความของคุณกำลังจะไปปรากฏบนจอ</p>
+          <button class="again-btn" id="againBtn">ส่งอีกข้อความ</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('againBtn').onclick = () => {
+      selectedImageDataUrl = null;
+      renderSubmitForm();
+    };
+  }
+
+  /* ===================== ROUTER ===================== */
+  if(mode === 'submit'){
+    renderSubmitForm();
+  } else {
+    startWall();
+  }
+})();
+</script>
+</body>
+</html>
