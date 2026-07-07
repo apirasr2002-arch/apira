@@ -8,6 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+  /* =========================================================
+     วางค่า firebaseConfig ของคุณแทนที่ก้อนนี้
+     (ได้จากขั้นตอน Firebase Console > Project settings > Web app)
+     ========================================================= */
+  const firebaseConfig = {
+    apiKey: "AIzaSyAU8h9vXayV3Pr10ruKf5TkTzmY8yLUNFE",
+    authDomain: "love-wall-c08dd.firebaseapp.com",
+    databaseURL: "https://love-wall-c08dd-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "love-wall-c08dd",
+    storageBucket: "love-wall-c08dd.firebasestorage.app",
+    messagingSenderId: "432582413289",
+    appId: "1:432582413289:web:f0ae93edfb159c8cc2d978",
+    measurementId: "G-2L96GNX6BW"
+  };
+  const FIREBASE_READY = firebaseConfig.databaseURL.startsWith("https://") && !firebaseConfig.databaseURL.includes("PASTE_YOUR");
+  if(FIREBASE_READY){
+    firebase.initializeApp(firebaseConfig);
+  }
+</script>
 <style>
   :root{
     --bg-deep:#0A2540;
@@ -201,7 +223,6 @@
   const params = new URLSearchParams(location.search);
   const mode = params.get('mode');
   const app = document.getElementById('app');
-  const STORAGE_PREFIX = 'loveentry:';
 
   function escapeHtml(str){
     const d = document.createElement('div');
@@ -277,13 +298,8 @@
     document.getElementById('cancelClear').onclick = () => overlay.remove();
     document.getElementById('confirmClear').onclick = async () => {
       try{
-        const list = await window.storage.list(STORAGE_PREFIX, true);
-        const keys = (list && list.keys) || [];
-        for(const k of keys){
-          try{ await window.storage.delete(k, true); }catch(e){}
-        }
+        await firebase.database().ref('entries').remove();
         seenIds = new Set();
-        await refreshWall();
       }catch(e){ console.error(e); }
       overlay.remove();
     };
@@ -292,57 +308,52 @@
   let seenIds = new Set();
   let firstLoad = true;
 
-  async function refreshWall(){
+  function renderEntries(snapshot){
     const board = document.getElementById('board');
     if(!board) return;
-    try{
-      const list = await window.storage.list(STORAGE_PREFIX, true);
-      let keys = (list && list.keys) || [];
-      keys = keys.slice().sort().reverse(); // keys embed timestamp -> lexical sort works
-      const topKeys = keys.slice(0, 60);
 
-      if(topKeys.length === 0){
-        board.innerHTML = `<div class="empty-note"><div style="font-size:40px;">${FLOWER}</div>ยังไม่มีสติกเกอร์<br>สแกน QR ด้านขวาเพื่อเป็นคนแรก!</div>`;
-        firstLoad = false;
-        return;
-      }
+    const items = [];
+    snapshot.forEach(child => {
+      items.push({key: child.key, data: child.val()});
+    });
+    const topItems = items.slice(-60);
 
-      const entries = await Promise.all(topKeys.map(async k => {
-        try{
-          const r = await window.storage.get(k, true);
-          if(!r) return null;
-          const data = JSON.parse(r.value);
-          return {key:k, data};
-        }catch(e){ return null; }
-      }));
-
-      board.innerHTML = '';
-      entries.filter(Boolean).forEach(({key, data}) => {
-        const rot = hashRotation(key);
-        const isNew = !seenIds.has(key);
-        seenIds.add(key);
-        const el = document.createElement('div');
-        el.className = 'sticker';
-        el.style.setProperty('--rot', rot + 'deg');
-        el.style.transform = `rotate(${rot}deg)`;
-        if(!isNew || firstLoad){ el.style.animation = 'none'; }
-        el.innerHTML = `
-          ${data.image ? `<img src="${data.image}" alt="รูปคู่กับคุณแม่">` : `<div class="icon-row">${HEART}</div>`}
-          ${data.message ? `<div class="msg">${escapeHtml(data.message)}</div>` : ''}
-          ${data.name ? `<div class="from">— ${escapeHtml(data.name)}</div>` : ''}
-        `;
-        board.appendChild(el);
-      });
+    if(topItems.length === 0){
+      board.innerHTML = `<div class="empty-note"><div style="font-size:40px;">${FLOWER}</div>ยังไม่มีสติกเกอร์<br>สแกน QR ด้านขวาเพื่อเป็นคนแรก!</div>`;
       firstLoad = false;
-    }catch(e){
-      console.error('refreshWall error', e);
+      return;
     }
+
+    board.innerHTML = '';
+    topItems.forEach(({key, data}) => {
+      const rot = hashRotation(key);
+      const isNew = !seenIds.has(key);
+      seenIds.add(key);
+      const el = document.createElement('div');
+      el.className = 'sticker';
+      el.style.setProperty('--rot', rot + 'deg');
+      el.style.transform = `rotate(${rot}deg)`;
+      if(!isNew || firstLoad){ el.style.animation = 'none'; }
+      el.innerHTML = `
+        ${data.image ? `<img src="${data.image}" alt="รูปคู่กับคุณแม่">` : `<div class="icon-row">${HEART}</div>`}
+        ${data.message ? `<div class="msg">${escapeHtml(data.message)}</div>` : ''}
+        ${data.name ? `<div class="from">— ${escapeHtml(data.name)}</div>` : ''}
+      `;
+      board.appendChild(el);
+    });
+    firstLoad = false;
   }
 
   function startWall(){
     renderWallShell();
-    refreshWall();
-    setInterval(refreshWall, 4000);
+    if(!FIREBASE_READY){
+      document.getElementById('board').innerHTML =
+        `<div class="empty-note">${FLOWER}<br>ยังไม่ได้ตั้งค่า Firebase<br>แก้ไข firebaseConfig ในไฟล์ก่อนใช้งานจริง</div>`;
+      return;
+    }
+    firebase.database().ref('entries').limitToLast(60).on('value', renderEntries, (err) => {
+      console.error('Firebase read error', err);
+    });
   }
 
   /* ===================== SUBMIT VIEW ===================== */
@@ -429,11 +440,10 @@
         image: selectedImageDataUrl || null,
         ts: Date.now()
       };
-      const key = STORAGE_PREFIX + Date.now() + '-' + Math.random().toString(36).slice(2,7);
 
       try{
-        const res = await window.storage.set(key, JSON.stringify(entry), true);
-        if(!res){ throw new Error('save failed'); }
+        if(!FIREBASE_READY){ throw new Error('Firebase not configured'); }
+        await firebase.database().ref('entries').push(entry);
         renderThanks();
       }catch(e){
         console.error(e);
