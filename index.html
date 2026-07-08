@@ -299,6 +299,17 @@
   const FLOWER = '🌼', HEART = '💙';
   const ADMIN_PIN = '2569'; // เปลี่ยนรหัสนี้ก่อนใช้งานจริง
 
+  // คำที่เข้าข่ายเสี่ยง/ไม่เหมาะสม -> ข้อความจะถูกพักไว้รอแอดมินตรวจสอบก่อนขึ้นจอ
+  // แก้ไข/เพิ่มคำได้ตามต้องการ
+  const RISKY_WORDS = [
+    'เหี้ย','สัส','ควย','เย็ด','ไอ้สัตว์','ระยำ','xxx','sex','fuck','shit','damn','ตอแหล','ชิบหาย'
+  ];
+  function isRisky(text){
+    if(!text) return false;
+    const lower = text.toLowerCase();
+    return RISKY_WORDS.some(w => lower.includes(w.toLowerCase()));
+  }
+
   /* ===================== WALL VIEW ===================== */
   function renderWallShell(){
     app.innerHTML = `
@@ -433,7 +444,7 @@
       <div class="submit-root">
         <div class="submit-card">
           <h1 style="text-align:center;">${HEART} บอกรักแม่ผ่านมือถือ</h1>
-          <p class="lead">ข้อความของคุณจะถูกตรวจสอบก่อนขึ้นจอ</p>
+          <p class="lead">ข้อความและรูปของคุณจะขึ้นจอทันที</p>
 
           <label for="nameInput">ชื่อผู้ส่ง (ไม่บังคับ)</label>
           <input type="text" id="nameInput" placeholder="เช่น ทีมบัญชี" maxlength="40">
@@ -503,18 +514,19 @@
       btn.disabled = true;
       btn.textContent = 'กำลังส่ง...';
 
+      const flagged = isRisky(message) || isRisky(name);
       const entry = {
         name: name || '',
         message: message || '',
         image: selectedImageDataUrl || null,
         ts: Date.now(),
-        status: 'pending'
+        status: flagged ? 'pending' : 'approved'
       };
 
       try{
         if(!FIREBASE_READY){ throw new Error('Firebase not configured'); }
         await firebase.database().ref('entries').push(entry);
-        renderThanks();
+        renderThanks(flagged);
       }catch(e){
         console.error(e);
         errText.textContent = 'ส่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
@@ -525,13 +537,15 @@
     });
   }
 
-  function renderThanks(){
+  function renderThanks(flagged){
     app.innerHTML = `
       <div class="submit-root">
         <div class="thanks-screen">
           <div class="big-icon">${HEART}</div>
           <h1>ส่งเรียบร้อยแล้ว!</h1>
-          <p>ขอบคุณที่ร่วมบอกรักแม่ ข้อความของคุณกำลังรอตรวจสอบ ก่อนขึ้นจอ</p>
+          <p>${flagged
+            ? 'ขอบคุณที่ร่วมบอกรักแม่ ข้อความของคุณกำลังรอทีมงานตรวจสอบก่อนขึ้นจอ'
+            : 'ขอบคุณที่ร่วมบอกรักแม่ ข้อความของคุณกำลังจะขึ้นจอแล้ว'}</p>
           <button class="again-btn" id="againBtn">ส่งอีกข้อความ</button>
         </div>
       </div>
