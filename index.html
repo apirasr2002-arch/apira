@@ -260,6 +260,7 @@
     padding:2px 9px;border-radius:20px;margin-bottom:5px;}
   .badge-pending{background:#FDECC8;color:#9A6A16;}
   .badge-approved{background:#D9F0DE;color:#237A45;}
+  .badge-hidden{background:#E4E7EA;color:#5A6570;}
   .admin-item .ai-actions{display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
   .admin-item .ai-actions button{
     border:none;border-radius:7px;padding:6px 12px;font-size:12.5px;font-family:'Mitr',sans-serif;
@@ -267,6 +268,8 @@
   }
   .btn-approve{background:#2E9E5B;color:#fff;}
   .btn-reject{background:#D65A5A;color:#fff;}
+  .btn-hide{background:#8A97A5;color:#fff;}
+  .btn-restore{background:#2472B4;color:#fff;}
   .admin-empty{text-align:center;color:var(--ink-soft);padding:30px 0;font-size:14px;}
 
   @media (max-width:900px){
@@ -396,7 +399,8 @@
         items.push({key: child.key, data});
       }
     });
-    const topItems = items.slice(-60);
+    let topItems = items.slice(-60);
+    topItems.reverse(); // newest first
 
     if(topItems.length === 0){
       board.innerHTML = `<div class="empty-note"><div style="font-size:40px;">${FLOWER}</div>ยังไม่มีสติกเกอร์<br>สแกน QR ด้านขวาเพื่อเป็นคนแรก!</div>`;
@@ -404,20 +408,40 @@
       return;
     }
 
+    // นับข้อความซ้ำ (ไม่รวมข้อความว่าง) เพื่อทำให้ข้อความที่ซ้ำกันมากดูใหญ่ขึ้น
+    const countMap = {};
+    topItems.forEach(({data}) => {
+      const norm = (data.message || '').trim().toLowerCase();
+      if(norm){ countMap[norm] = (countMap[norm] || 0) + 1; }
+    });
+
     board.innerHTML = '';
-    topItems.forEach(({key, data}) => {
+    topItems.forEach(({key, data}, idx) => {
       const rot = hashRotation(key);
       const isNew = !seenIds.has(key);
       seenIds.add(key);
+
+      const norm = (data.message || '').trim().toLowerCase();
+      const dupCount = norm ? countMap[norm] : 1;
+      let factor = (idx % 2 === 0) ? 1.15 : 0.9; // เด้งใหญ่-เล็กสลับกัน
+      if(dupCount > 1){ factor *= 1 + Math.min(dupCount - 1, 4) * 0.14; }
+      factor = Math.min(factor, 2.2);
+
+      const width = Math.round(190 * factor);
+      const imgH = Math.round(width * 0.66);
+      const msgFont = Math.round(14 * Math.sqrt(factor));
+      const nameFont = Math.round(12.5 * Math.sqrt(factor));
+
       const el = document.createElement('div');
       el.className = 'sticker';
       el.style.setProperty('--rot', rot + 'deg');
+      el.style.width = width + 'px';
       el.style.transform = `rotate(${rot}deg)`;
       if(!isNew || firstLoad){ el.style.animation = 'none'; }
       el.innerHTML = `
-        ${data.image ? `<img src="${data.image}" alt="รูปคู่กับคุณแม่">` : `<div class="icon-row">${HEART}</div>`}
-        ${data.message ? `<div class="msg">${escapeHtml(data.message)}</div>` : ''}
-        ${data.name ? `<div class="from">— ${escapeHtml(data.name)}</div>` : ''}
+        ${data.image ? `<img style="height:${imgH}px;" src="${data.image}" alt="รูปคู่กับคุณแม่">` : `<div class="icon-row">${HEART}</div>`}
+        ${data.message ? `<div class="msg" style="font-size:${msgFont}px;">${escapeHtml(data.message)}</div>` : ''}
+        ${data.name ? `<div class="from" style="font-size:${nameFont}px;">— ${escapeHtml(data.name)}</div>` : ''}
       `;
       board.appendChild(el);
     });
@@ -467,42 +491,81 @@
     const photoInput = document.getElementById('photoInput');
     const previewArea = document.getElementById('previewArea');
     const errText = document.getElementById('errText');
+    const sendBtn = document.getElementById('sendBtn');
+    let imageProcessing = false;
 
     photoInput.addEventListener('change', () => {
       const file = photoInput.files[0];
       if(!file) return;
+
+      imageProcessing = true;
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'กำลังเตรียมรูปภาพ...';
+      errText.style.display = 'none';
+
       const reader = new FileReader();
+      reader.onerror = () => {
+        imageProcessing = false;
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
+        errText.textContent = 'อ่านไฟล์รูปไม่สำเร็จ ลองเลือกรูปใหม่อีกครั้ง';
+        errText.style.display = 'block';
+      };
       reader.onload = (e) => {
         const img = new Image();
+        img.onerror = () => {
+          imageProcessing = false;
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
+          errText.textContent = 'ไฟล์นี้ใช้ไม่ได้ ลองเลือกรูปอื่น';
+          errText.style.display = 'block';
+        };
         img.onload = () => {
-          const maxW = 900;
-          const scale = Math.min(1, maxW / img.width);
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          selectedImageDataUrl = canvas.toDataURL('image/jpeg', 0.72);
-          previewArea.innerHTML = `
-            <div class="preview-wrap">
-              <img src="${selectedImageDataUrl}">
-              <button class="remove-photo" id="removePhoto">✕</button>
-            </div>`;
-          document.getElementById('removePhoto').onclick = () => {
-            selectedImageDataUrl = null;
-            previewArea.innerHTML = '';
-            photoInput.value = '';
-          };
+          try{
+            const maxW = 900;
+            const scale = Math.min(1, maxW / img.width);
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            selectedImageDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+            previewArea.innerHTML = `
+              <div class="preview-wrap">
+                <img src="${selectedImageDataUrl}">
+                <button class="remove-photo" id="removePhoto">✕</button>
+              </div>`;
+            document.getElementById('removePhoto').onclick = () => {
+              selectedImageDataUrl = null;
+              previewArea.innerHTML = '';
+              photoInput.value = '';
+            };
+          }catch(err){
+            console.error(err);
+            errText.textContent = 'ประมวลผลรูปไม่สำเร็จ ลองเลือกรูปใหม่';
+            errText.style.display = 'block';
+          }finally{
+            imageProcessing = false;
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
+            sendBtn.scrollIntoView({behavior:'smooth', block:'center'});
+          }
         };
         img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     });
 
-    document.getElementById('sendBtn').addEventListener('click', async () => {
+    sendBtn.addEventListener('click', async () => {
       const name = document.getElementById('nameInput').value.trim();
       const message = document.getElementById('msgInput').value.trim();
       errText.style.display = 'none';
+
+      if(imageProcessing){
+        errText.textContent = 'กรุณารอรูปภาพประมวลผลเสร็จก่อนกดส่ง';
+        errText.style.display = 'block';
+        return;
+      }
 
       if(!message && !selectedImageDataUrl){
         errText.textContent = 'กรุณาพิมพ์ข้อความ หรือแนบรูปภาพอย่างน้อยหนึ่งอย่าง';
@@ -510,9 +573,8 @@
         return;
       }
 
-      const btn = document.getElementById('sendBtn');
-      btn.disabled = true;
-      btn.textContent = 'กำลังส่ง...';
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'กำลังส่ง...';
 
       const flagged = isRisky(message) || isRisky(name);
       const entry = {
@@ -531,8 +593,8 @@
         console.error(e);
         errText.textContent = 'ส่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
         errText.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'ติดสติกเกอร์ให้แม่ ' + HEART;
       }
     });
   }
@@ -652,10 +714,29 @@
       }
 
       list.innerHTML = items.map(({key, data}) => {
-        const badge = data.status === 'approved'
-          ? `<span class="badge badge-approved">อนุมัติแล้ว</span>`
-          : `<span class="badge badge-pending">รอตรวจสอบ</span>`;
+        let badge;
+        if(data.status === 'approved') badge = `<span class="badge badge-approved">แสดงอยู่บนจอ</span>`;
+        else if(data.status === 'hidden') badge = `<span class="badge badge-hidden">เก็บไว้ (ไม่แสดงบนจอ)</span>`;
+        else badge = `<span class="badge badge-pending">รอตรวจสอบ</span>`;
+
         const time = data.ts ? new Date(data.ts).toLocaleString('th-TH') : '';
+
+        let actionButtons = '';
+        if(data.status === 'pending'){
+          actionButtons = `
+            <button class="btn-approve" data-act="approve" data-key="${key}">อนุมัติ</button>
+            <button class="btn-hide" data-act="hide" data-key="${key}">เก็บไว้ก่อน</button>
+            <button class="btn-reject" data-act="delete" data-key="${key}">ลบถาวร</button>`;
+        }else if(data.status === 'approved'){
+          actionButtons = `
+            <button class="btn-hide" data-act="hide" data-key="${key}">เก็บ (เอาออกจากจอ)</button>
+            <button class="btn-reject" data-act="delete" data-key="${key}">ลบถาวร</button>`;
+        }else{ // hidden
+          actionButtons = `
+            <button class="btn-restore" data-act="restore" data-key="${key}">แสดงกลับขึ้นจอ</button>
+            <button class="btn-reject" data-act="delete" data-key="${key}">ลบถาวร</button>`;
+        }
+
         return `
           <div class="admin-item">
             ${data.image ? `<img src="${data.image}">` : ''}
@@ -665,8 +746,7 @@
               <div class="ai-meta">${data.name ? escapeHtml(data.name) + ' · ' : ''}${time}</div>
             </div>
             <div class="ai-actions">
-              ${data.status !== 'approved' ? `<button class="btn-approve" data-act="approve" data-key="${key}">อนุมัติ</button>` : ''}
-              <button class="btn-reject" data-act="reject" data-key="${key}">ลบ</button>
+              ${actionButtons}
             </div>
           </div>
         `;
@@ -675,11 +755,14 @@
       list.querySelectorAll('button[data-act]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const key = btn.dataset.key;
+          const act = btn.dataset.act;
           try{
-            if(btn.dataset.act === 'approve'){
+            if(act === 'approve' || act === 'restore'){
               await firebase.database().ref('entries/' + key).update({status: 'approved'});
-            }else{
-              if(confirm('ลบข้อความนี้?')){
+            }else if(act === 'hide'){
+              await firebase.database().ref('entries/' + key).update({status: 'hidden'});
+            }else if(act === 'delete'){
+              if(confirm('ลบข้อความนี้ถาวร? การลบนี้กู้คืนไม่ได้')){
                 await firebase.database().ref('entries/' + key).remove();
               }
             }
